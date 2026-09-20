@@ -1,2 +1,75 @@
-FROM registry.access.redhat.com/ubi9/go-toolset:${UBI_VERSION}-minimal
+# Build stage, prepended to upstream's Dockerfile by build-image.sh.
+# Must come first: the last stage in a Dockerfile is what gets built.
+
+ARG UBI_VERSION=@UBI_VERSION@
+
+FROM registry.access.redhat.com/ubi9/go-toolset:${UBI_VERSION} AS builder
+
+# go-toolset runs as 1001; installing packages and writing /go need root.
+USER 0
+
+# go-toolset puts GOPATH under /opt/app-root, so without this the cache mounts
+# land on paths Go never writes to and every build re-downloads.
+ENV GOPATH=/go \
+    GOCACHE=/root/.cache/go-build \
+    HOME=/root
+ENV PATH="/go/bin:${PATH}"
+
+# nodejs is a module stream in RHEL 9; pin it or the default stream decides.
+RUN dnf -y module enable "nodejs:@NODEJS_VERSION@" && \
+    dnf -y install --nodocs --setopt=install_weak_deps=0 \
+        glibc-devel nodejs npm git gcc zip unzip tar wget && \
+    dnf clean all && rm -rf /var/cache/dnf
+
+# Upstream's installer defaults to ./bin, which is not on PATH here.
+RUN curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
+
+WORKDIR /go/src/semaphore
+COPY . /go/src/semaphore
+
+RUN --mount=type=cache,target=/go/pkg \
+    go mod download -x
+
+ARG APP_BUILD_TYPE
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ARG GH_TOKEN
+ARG PRO_BRANCH=2-19-stable
+
+RUN if [ -n "$APP_BUILD_TYPE" ]; then \
+      git clone -b "$PRO_BRANCH" "https://${GH_TOKEN}@github.com/semaphoreui/semaphorepro-module.git" pro_impl && \
+      go work init . ./pro_impl; \
+    fi
+
+RUN --mount=type=cache,target=/go/pkg \
+    --mount=type=cache,target=/root/.cache/go-build \
+    task deps APP_BUILD_TYPE=${APP_BUILD_TYPE} && \
+    task build GOOS=${TARGETOS} GOARCH=${TARGETARCH} APP_BUILD_TYPE=${APP_BUILD_TYPE}
+
+# renovate: datasource=github-releases depName=opentofu/opentofu
+ENV OPENTOFU_VERSION=1.11.0
+# renovate: datasource=github-releases depName=hashicorp/terraform
+ENV TERRAFORM_VERSION=1.11.3
+# renovate: datasource=github-releases depName=gruntwork-io/terragrunt
+ENV TERRAGRUNT_VERSION=0.78.0
+# renovate: datasource=github-releases depName=krallin/tini
+ENV TINI_VERSION=v0.19.0
+
+RUN curl -fsSL -O "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_linux_${TARGETARCH}.tar.gz" && \
+    tar xf "tofu_${OPENTOFU_VERSION}_linux_${TARGETARCH}.tar.gz" -C /tmp && \
+    rm "tofu_${OPENTOFU_VERSION}_linux_${TARGETARCH}.tar.gz"
+
+RUN curl -fsSL -O "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip" && \
+    unzip "terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip" -d /tmp && \
+    rm "terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip"
+
+RUN curl -fsSL -o /tmp/terragrunt "https://github.com/gruntwork-io/terragrunt/releases/download/v${TERRAGRUNT_VERSION}/terragrunt_linux_${TARGETARCH}" && \
+    chmod +x /tmp/terragrunt
+
+# tini is the one Alpine package with no UBI counterpart; it lives in EPEL,
+# which is not worth enabling for a 24KB init.
+RUN curl -fsSL -o /tmp/tini "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static-${TARGETARCH}" && \
+    curl -fsSL -o /tmp/tini.sha256sum "https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini-static-${TARGETARCH}.sha256sum" && \
+    printf '%s  /tmp/tini\n' "$(cut -d' ' -f1 /tmp/tini.sha256sum)" | sha256sum -c - && \
+    chmod +x /tmp/tini && rm /tmp/tini.sha256sum
 
