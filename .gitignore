@@ -5,6 +5,7 @@ build/semaphore/
 __pycache__/
 *.py[cod]
 .venv/
+.tools/
 
 # Local secrets
 .env

@@ -28,13 +28,21 @@ Dockerfile is the one that gets built**. Prepending it would produce a valid
 Dockerfile that silently builds the *builder* stage instead.
 
 ```bash
-python3 bootstrap.py                     # create .venv (uv + jinja2)
+python3 bootstrap.py                     # install uv into .tools, create .venv
 .venv/bin/python build/build_image.py    # rewrite the Dockerfile (idempotent)
 # then run the docker build command it prints
 ```
 
 The clone's Dockerfile is restored from git on every run, so re-running never
 stacks edits.
+
+`bootstrap.py` runs in two phases: it installs the build tooling (uv) and
+then uses uv to create `.venv` with the build dependencies. uv lands in
+`.tools/` rather than `.venv/`, since it is what *creates* the venv. A host
+uv is reused when present; `--no-host-uv` forces the isolated copy.
+
+Both directories are disposable — deleting them and re-running is the
+supported reset. A system `pip install uv` is not used because this host, like most Debian/Ubuntu ones, is PEP 668 externally-managed.
 
 ## Why patch instead of fork
 

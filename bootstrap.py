@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Create the project venv with uv. Stdlib only: runs before the venv exists."""
+"""Install build tooling (uv), then create the build venv.
 
+Stdlib only: this runs before any venv exists.
+"""
+
+import argparse
 import shutil
 import subprocess
 import sys
@@ -9,6 +13,7 @@ import venv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+TOOLS = ROOT / ".tools"
 VENV = ROOT / ".venv"
 PYPROJECT = ROOT / "pyproject.toml"
 
@@ -21,39 +26,66 @@ def run(*cmd: str) -> None:
     subprocess.run(cmd, check=True)
 
 
-def dependencies() -> list[str]:
+def pyproject() -> dict:
     with PYPROJECT.open("rb") as handle:
-        return tomllib.load(handle)["project"].get("dependencies", [])
+        return tomllib.load(handle)
 
 
-def ensure_uv() -> str:
-    """Return a uv executable, installing it into the venv if the host lacks one."""
-    found = shutil.which("uv")
-    if found:
-        run(found, "venv", str(VENV))
-        return found
+def install_tools(config: dict, reuse_host: bool = True) -> str:
+    """Return a uv executable, installing it if the host has none.
 
-    # A system pip install would hit PEP 668, so uv goes inside the venv.
-    venv.EnvBuilder(with_pip=True, clear=True).create(VENV)
-    pip = bin_dir(VENV) / "pip"
-    run(str(pip), "install", "--quiet", "--upgrade", "uv")
-    return str(bin_dir(VENV) / "uv")
+    PEP 668 blocks a system pip install, so tooling goes in its own venv
+    rather than alongside the build dependencies.
+    """
+    if reuse_host:
+        found = shutil.which("uv")
+        if found:
+            print(f"uv:    {found} (host)")
+            return found
+
+    tools = config.get("tool", {}).get("bootstrap", {}).get("tools", ["uv"])
+    venv.EnvBuilder(with_pip=True, clear=True).create(TOOLS)
+    run(str(bin_dir(TOOLS) / "pip"), "install", "--quiet", "--upgrade", *tools)
+
+    uv = bin_dir(TOOLS) / "uv"
+    print(f"uv:    {uv} ({' '.join(tools)})")
+    return str(uv)
+
+
+def create_venv(uv: str, dependencies: list[str]) -> Path:
+    """Build venv holds only what build_image.py imports."""
+    # --allow-existing: uv errors on a pre-existing venv, which breaks re-runs.
+    run(uv, "venv", "--quiet", "--allow-existing", str(VENV))
+    python = bin_dir(VENV) / "python"
+
+    if dependencies:
+        run(uv, "pip", "install", "--quiet", "--python", str(python), *dependencies)
+
+    return python
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--no-host-uv", action="store_true",
+                        help="install uv into .tools even if the host has one")
+    args = parser.parse_args()
+
     if not PYPROJECT.is_file():
         print(f"error: {PYPROJECT} not found", file=sys.stderr)
         return 1
 
-    uv = ensure_uv()
-    python = bin_dir(VENV) / "python"
+    config = pyproject()
+    dependencies = config["project"].get("dependencies", [])
 
-    deps = dependencies()
-    if deps:
-        run(uv, "pip", "install", "--quiet", "--python", str(python), *deps)
+    try:
+        uv = install_tools(config, reuse_host=not args.no_host_uv)
+        python = create_venv(uv, dependencies)
+    except subprocess.CalledProcessError as error:
+        print(f"\nerror: command failed: {' '.join(error.cmd)}", file=sys.stderr)
+        return 1
 
-    print(f"venv:     {VENV}")
-    print(f"activate: source {VENV.name}/bin/activate")
+    print(f"venv:  {VENV} ({', '.join(dependencies) or 'no dependencies'})")
+    print(f"\nBuild with:\n    {python.relative_to(Path.cwd())} build/build_image.py")
     return 0
 
 

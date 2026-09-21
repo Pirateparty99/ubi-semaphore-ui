@@ -4,3 +4,7 @@ version = "0.1.0"
 description = "Build a Semaphore UI container image on Red Hat UBI"
 requires-python = ">=3.11"
 dependencies = ["jinja2>=3.1"]
+
+# Installed by bootstrap.py before the build venv exists.
+[tool.bootstrap]
+tools = ["uv>=0.5"]
