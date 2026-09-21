@@ -1,0 +1,6 @@
+# Upstream's build stage fetches all three regardless; dropping one here keeps
+# it out of the final image, ~100MB each.
+[tools]
+tofu = true
+terraform = true
+terragrunt = true

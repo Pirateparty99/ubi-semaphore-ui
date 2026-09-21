@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import deps
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 BUILD_DIR = Path(__file__).resolve().parent
@@ -23,30 +24,20 @@ DOCKERFILE_REL = "deployment/docker/server/Dockerfile"
 SEMAPHORE_REPO = "https://github.com/semaphoreui/semaphore.git"
 SEMAPHORE_REF = "v2.19.14"
 
+# ansible_version is ansible-core's: it names the venv path, and core is what
+# the deps stage installs. Package lists come from deps/.
 CONFIG = {
     "ubi_version": "9.8",
     "python_version": "3.12",
     "nodejs_version": "22",
-    "ansible_version": "13.5.0",
+    "ansible_version": "2.20.9",
     "tini_version": "v0.19.0",
     "runtime_packages": [
         "bash", "git", "gnupg2", "mysql", "openssh-clients", "rsync",
         "sshpass", "tar", "tzdata", "unzip", "wget", "zip", "jq",
         "shadow-utils", "findutils", "glibc-langpack-en",
     ],
-    "pip_packages": [
-        '"ansible==${ANSIBLE_VERSION}"', "boto3", "botocore", "requests",
-        "pywinrm", "passlib", "paramiko",
-    ],
-    "builder_artifacts": [
-        {"src": "/go/src/semaphore/deployment/docker/server/server-wrapper",
-         "dest": "/usr/local/bin/", "flags": "--chown=1001:0 --chmod=755 "},
-        {"src": "/go/src/semaphore/bin/semaphore",
-         "dest": "/usr/local/bin/", "flags": "--chown=1001:0 --chmod=755 "},
-        {"src": "/tmp/tofu", "dest": "/usr/local/bin/", "flags": ""},
-        {"src": "/tmp/terraform", "dest": "/usr/local/bin/", "flags": ""},
-        {"src": "/tmp/terragrunt", "dest": "/usr/local/bin/", "flags": ""},
-    ],
+    **deps.load(),
 }
 
 UPSTREAM_RUNTIME_FROM = "FROM alpine:3.21"
@@ -218,6 +209,11 @@ def verify(text: str) -> None:
     froms = re.findall(r"^FROM .*$", text, re.MULTILINE)
     if not froms or not froms[-1].startswith("FROM registry.access.redhat.com/ubi9/ubi-minimal:"):
         raise BuildError(f"last stage must be the ubi-minimal runtime, got: {froms[-1:]}")
+
+    if not any(line.endswith(" AS deps") for line in froms):
+        raise BuildError("deps stage missing")
+    if "COPY --from=deps" not in text:
+        raise BuildError("runtime does not copy the venv from deps")
 
     # Every artifact the runtime copies must exist in the build stage.
     for artifact in CONFIG["builder_artifacts"]:

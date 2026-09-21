@@ -1,0 +1,10 @@
+# Installed into the ansible venv.
+# ansible-core, not ansible: the full distribution bundles ~49 collection
+# namespaces (255MB). Collections are declared in ../galaxy/requirements.yml.
+ansible-core==2.20.9
+boto3
+botocore
+requests
+pywinrm
+passlib
+paramiko

@@ -10,7 +10,8 @@ at a pinned tag and rewrites its server Dockerfile:
 1. **Patch the build stage onto UBI** — swap the base image, translate `apk` to
    `dnf`, point the `task` installer somewhere on `PATH`.
 2. **Delete upstream's Alpine runtime stage.**
-3. **Render and append `build/templates/Dockerfile.ubi-minimal.j2`** as the new runtime stage.
+3. **Render and append `build/templates/Dockerfile.ubi-minimal.j2`**, which
+   supplies a `deps` stage and the final runtime stage.
 
 The split is deliberate: upstream's build stage is the half that changes
 between releases, so it carries as few patches as possible (currently three
@@ -54,6 +55,41 @@ runtime copies is actually produced by the build stage.
 
 If an upstream bump breaks a rule, the script tells you which one rather than
 emitting a half-translated Dockerfile.
+
+## Dependencies
+
+Declared under `build/deps/`, one subdirectory per kind, each pairing a
+requirements file with the loader that reads it:
+
+| Directory | Declares | Read by |
+|---|---|---|
+| `deps/pip/requirements.txt` | Python packages in the ansible venv | `deps/pip` |
+| `deps/galaxy/requirements.yml` | Ansible collections | `deps/galaxy` |
+| `deps/terraform/tools.toml` | Which IaC binaries reach the image | `deps/terraform` |
+
+The loaders feed the Jinja2 context, so the Dockerfile renders these inline
+rather than `COPY`ing requirement files. That matters: anything added to the
+build context invalidates upstream's `COPY . /go/src/semaphore`, so a
+dependency change would otherwise force a full Go and npm rebuild.
+
+A separate `deps` stage installs them and the runtime copies the finished venv,
+which decouples dependency installs from the application build in both
+directions — editing Go code does not reinstall ansible, and editing
+requirements does not recompile Go.
+
+### ansible-core, not ansible
+
+The `ansible` distribution bundles ~49 collection namespaces totalling 255MB,
+most of them vendor-specific (`fortinet/fortimanager` 28MB, `cisco/dnac` 23MB,
+`fortinet/fortios` 21MB). The image installs `ansible-core` and only the
+collections listed in `deps/galaxy/requirements.yml`.
+
+**This is a coverage tradeoff, not a free win.** A playbook using a collection
+that is not declared will fail with a module-not-found error where the full
+distribution would have worked. `deps/galaxy/requirements.yml` is the knob —
+add what you use. Likewise `deps/terraform/tools.toml`: upstream's build stage
+fetches tofu, terraform and terragrunt regardless, but only the enabled ones
+are copied into the image, at roughly 100MB each.
 
 ## Alpine to UBI
 
@@ -107,24 +143,27 @@ providers can be installed
 
 ## Image size
 
-~1.37GB, essentially all runtime payload:
+Measured on the `deps` stage and the assembled image:
 
 | Component | Size |
 |---|---|
-| ansible venv | 356MB (255MB of it `ansible_collections`) |
+| ansible venv | 125MB (50MB of it `ansible_collections`, 9 namespaces) |
 | tofu + terraform + terragrunt | 305MB |
 | runtime packages | 195MB |
 | `ubi-minimal` base | 110MB |
 | `semaphore` binary | 50MB |
 
-**A third build stage would not help.** A third stage pays off when the final
-image carries build-time tooling to discard; here the builder is already
-dropped, there are no compilers, and package/pip caches are cleaned within
-their own layers. The levers that would actually move the number:
+The venv was 335MB before `ansible-core` replaced the full distribution
+(255MB of collections across 49 namespaces).
 
-- **~255MB** — install `ansible-core` plus only the collections you use,
-  instead of the full `ansible` distribution.
-- **~100MB each** — drop whichever of tofu/terraform/terragrunt you do not use.
+The `deps` stage exists for caching, not for shrinking: the builder is already
+discarded, there are no compilers, and package caches are cleaned within their
+own layers, so there is no build-time tooling left for another stage to strip.
+What it buys is independence — dependency installs no longer share a cache key
+with the Go and npm build.
+
+The remaining size lever is `deps/terraform/tools.toml`: roughly 100MB per IaC
+binary you do not need.
 
 One size bug worth remembering: `chown`/`chmod` in a `RUN` after a `COPY`
 rewrites the file into a new layer, which was duplicating the 50MB `semaphore`

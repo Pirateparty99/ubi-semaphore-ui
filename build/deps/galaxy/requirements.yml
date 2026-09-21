@@ -1,0 +1,8 @@
+# Collections installed with ansible-galaxy. This list is the size/coverage
+# knob: the full ansible distribution ships ~49 namespaces, most unused.
+collections:
+  - name: ansible.posix
+  - name: ansible.utils
+  - name: community.general
+  - name: community.crypto
+  - name: amazon.aws
