@@ -143,7 +143,7 @@ providers can be installed
 
 ## Image size
 
-Measured on the `deps` stage and the assembled image:
+~1.04GB, down from 1.3GB when the full `ansible` distribution was installed:
 
 | Component | Size |
 |---|---|
