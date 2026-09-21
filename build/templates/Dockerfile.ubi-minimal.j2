@@ -1,20 +1,19 @@
-# Runtime stage, appended to upstream's Dockerfile by build-image.sh.
+# Runtime stage, appended to upstream's Dockerfile by build_image.py.
 # Rationale for the choices below is in README.md.
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:${UBI_VERSION}
 
 ARG TARGETARCH=amd64
-ARG PYTHON_VERSION=@PYTHON_VERSION@
+ARG PYTHON_VERSION={{ python_version }}
 # renovate: datasource=pypi depName=ansible
-ARG ANSIBLE_VERSION=13.5.0
+ARG ANSIBLE_VERSION={{ ansible_version }}
 ENV ANSIBLE_VERSION=${ANSIBLE_VERSION}
 ARG ANSIBLE_VENV_PATH=/opt/semaphore/apps/ansible/${ANSIBLE_VERSION}/venv
 # renovate: datasource=github-releases depName=krallin/tini
-ARG TINI_VERSION=v0.19.0
+ARG TINI_VERSION={{ tini_version }}
 
 RUN microdnf install -y --nodocs --setopt=install_weak_deps=0 \
-        bash git gnupg2 mysql openssh-clients rsync sshpass tar tzdata \
-        unzip wget zip jq shadow-utils findutils glibc-langpack-en \
+        {{ runtime_packages | wrap }} \
         "python${PYTHON_VERSION}" "python${PYTHON_VERSION}-pip" && \
     microdnf clean all && rm -rf /var/cache/yum /var/cache/dnf && \
     useradd -u 1001 -g 0 -m -d /home/semaphore -s /bin/bash semaphore && \
@@ -36,11 +35,9 @@ RUN mkdir -p /etc/ssh/ssh_config.d && \
 # Ownership/mode set on COPY, not a later RUN: chmod'ing a copied file rewrites
 # it into a second layer, duplicating the binary.
 COPY --chown=1001:0 ./deployment/docker/server/ansible.cfg /etc/ansible/ansible.cfg
-COPY --from=builder --chown=1001:0 --chmod=755 /go/src/semaphore/deployment/docker/server/server-wrapper /usr/local/bin/
-COPY --from=builder --chown=1001:0 --chmod=755 /go/src/semaphore/bin/semaphore /usr/local/bin/
-COPY --from=builder /tmp/tofu /usr/local/bin/
-COPY --from=builder /tmp/terraform /usr/local/bin/
-COPY --from=builder /tmp/terragrunt /usr/local/bin/
+{%- for artifact in builder_artifacts %}
+COPY --from=builder {{ artifact.flags }}{{ artifact.src }} {{ artifact.dest }}
+{%- endfor %}
 
 WORKDIR /home/semaphore
 
@@ -48,7 +45,7 @@ WORKDIR /home/semaphore
 RUN "python${PYTHON_VERSION}" -m venv "${ANSIBLE_VENV_PATH}" --system-site-packages && \
     "${ANSIBLE_VENV_PATH}/bin/pip" install --no-cache-dir --upgrade pip && \
     "${ANSIBLE_VENV_PATH}/bin/pip" install --no-cache-dir \
-        "ansible==${ANSIBLE_VERSION}" boto3 botocore requests pywinrm passlib paramiko && \
+        {{ pip_packages | join(' ') }} && \
     find "${ANSIBLE_VENV_PATH}" -type d -name __pycache__ -prune -exec rm -rf {} + && \
     chown -R semaphore:0 /opt/semaphore && \
     chmod -R g=u /opt/semaphore

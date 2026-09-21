@@ -4,13 +4,13 @@ This repo is used to build and configure a container image running the Semaphore
 
 ## How it works
 
-`build/build-image.sh` clones [semaphoreui/semaphore](https://github.com/semaphoreui/semaphore)
+`build/build_image.py` clones [semaphoreui/semaphore](https://github.com/semaphoreui/semaphore)
 at a pinned tag and rewrites its server Dockerfile:
 
 1. **Patch the build stage onto UBI** — swap the base image, translate `apk` to
    `dnf`, point the `task` installer somewhere on `PATH`.
 2. **Delete upstream's Alpine runtime stage.**
-3. **Append `build/Dockerfile.ubi-minimal`** as the new runtime stage.
+3. **Render and append `build/templates/Dockerfile.ubi-minimal.j2`** as the new runtime stage.
 
 The split is deliberate: upstream's build stage is the half that changes
 between releases, so it carries as few patches as possible (currently three
@@ -18,12 +18,18 @@ hunks) and everything else we own lives in our own file. Upstream's
 `go mod download`, `task deps`/`task build` and the tofu/terraform/terragrunt
 fetches are left byte-identical.
 
+Versions, the runtime package list, pip packages and the artifacts copied
+from the build stage are declared in `CONFIG` at the top of
+`build/build_image.py`. Only the runtime stage is a Jinja2 template; the
+build stage stays a patch, so it cannot drift from upstream.
+
 The template is appended, not prepended, because **the last stage in a
 Dockerfile is the one that gets built**. Prepending it would produce a valid
 Dockerfile that silently builds the *builder* stage instead.
 
 ```bash
-./build/build-image.sh          # rewrite the Dockerfile (idempotent)
+python3 bootstrap.py                     # create .venv (uv + jinja2)
+.venv/bin/python build/build_image.py    # rewrite the Dockerfile (idempotent)
 # then run the docker build command it prints
 ```
 
@@ -138,7 +144,7 @@ reason it is in the image.
 
 ## Updating to a new upstream release
 
-Bump `SEMAPHORE_REF` in `build/build-image.sh` and re-run it. If upstream
+Bump `SEMAPHORE_REF` in `build/build_image.py` and re-run it. If upstream
 changed a patched block the script stops and names it. Worth re-checking on a
 bump:
 
