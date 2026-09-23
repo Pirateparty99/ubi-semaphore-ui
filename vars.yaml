@@ -37,3 +37,43 @@ image:
 semaphore:
   repo: "https://github.com/semaphoreui/semaphore.git"
   ref: "v2.19.14"
+
+# Relative to build/. The clone directory is recreated by the script.
+paths:
+  clone_dir: semaphore
+  template_dir: templates
+  runtime_template: Dockerfile.ubi-minimal.j2
+  dockerfile: deployment/docker/server/Dockerfile
+# Upstream coupling: `find` strings must match semaphore's Dockerfile at
+# `semaphore.ref` exactly. The script fails naming the patch if one stops
+# matching, so a version bump reports which rule needs revisiting.
+# `replace` blocks are rendered as Jinja2, so {{ image vars }} work there.
+upstream:
+  runtime_from: FROM alpine:3.21
+  patches:
+  - label: builder FROM
+    find: FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.24 as builder
+    replace: |-
+      ARG UBI_VERSION={{ ubi_version }}
+
+      FROM registry.access.redhat.com/ubi9/go-toolset:${UBI_VERSION} AS builder
+
+      USER 0
+
+      # go-toolset defaults GOPATH to /opt/app-root; upstream uses /go.
+      ENV GOPATH=/go \
+          GOCACHE=/root/.cache/go-build \
+          HOME=/root
+      ENV PATH="/go/bin:${PATH}"
+  - label: builder packages
+    find: |-
+      RUN apk add --no-cache -U \
+          libc-dev curl nodejs npm git gcc zip unzip tar
+    replace: |-
+      RUN dnf -y module enable "nodejs:{{ nodejs_version }}" && \
+          dnf -y install --nodocs --setopt=install_weak_deps=0 \
+              glibc-devel nodejs npm git gcc zip unzip tar wget && \
+          dnf clean all && rm -rf /var/cache/dnf
+  - label: task installer
+    find: RUN curl -sL https://taskfile.dev/install.sh | sh
+    replace: RUN curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin

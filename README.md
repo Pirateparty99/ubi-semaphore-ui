@@ -19,10 +19,23 @@ hunks) and everything else we own lives in our own file. Upstream's
 `go mod download`, `task deps`/`task build` and the tofu/terraform/terragrunt
 fetches are left byte-identical.
 
-Configuration lives in `vars.yaml` (versions, the runtime package list, the
-upstream repo and tag); dependency lists live under `build/deps/`. Only the
-runtime stage is a Jinja2 template; the build stage stays a patch, so it cannot
-drift from upstream.
+`vars.yaml` is the single configuration file. It holds four sections:
+
+| Section | Holds |
+|---|---|
+| `image` | versions and the runtime package list, rendered into the Dockerfile |
+| `semaphore` | upstream repo and tag |
+| `paths` | clone directory, template directory and names, relative to `build/` |
+| `upstream` | the `find`/`replace` patch rules and the runtime `FROM` anchor |
+
+Only `build/deps/` sits outside it, holding the dependency lists. Nothing else
+in `build_image.py` is tunable — the script derives its own location and reads
+everything else from `vars.yaml`.
+
+The `upstream.patches` entries are the coupling to semaphore's own Dockerfile:
+each `find` must match its text exactly, and the `replace` blocks are rendered
+as Jinja2, so `image` variables work inside them. If upstream renames something
+the script stops and names the patch that no longer matches.
 
 Quote every version in `vars.yaml`. Unquoted, YAML parses `3.10` as the float
 `3.1`, which would render as `python3.1`; the loader rejects non-string

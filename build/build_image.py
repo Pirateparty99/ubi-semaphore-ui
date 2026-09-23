@@ -15,21 +15,19 @@ import yaml
 import deps
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+# Everything configurable lives in vars.yaml; only the path to it is fixed.
 BUILD_DIR = Path(__file__).resolve().parent
-CLONE_DIR = BUILD_DIR / "semaphore"
-TEMPLATE_DIR = BUILD_DIR / "templates"
 VARS_FILE = BUILD_DIR.parent / "vars.yaml"
-RUNTIME_TEMPLATE = "Dockerfile.ubi-minimal.j2"
-DOCKERFILE_REL = "deployment/docker/server/Dockerfile"
 
 REQUIRED_VARS = {
     "image": ["ubi_version", "python_version", "nodejs_version",
               "ansible_version", "tini_version", "runtime_packages"],
     "semaphore": ["repo", "ref"],
+    "paths": ["clone_dir", "template_dir", "runtime_template", "dockerfile"],
+    "upstream": ["runtime_from", "patches"],
 }
 VERSION_KEYS = [key for key in REQUIRED_VARS["image"] if key.endswith("_version")]
-
-UPSTREAM_RUNTIME_FROM = "FROM alpine:3.21"
+PATCH_KEYS = {"label", "find", "replace"}
 
 
 class BuildError(Exception):
@@ -60,12 +58,26 @@ def load_vars(path: Path) -> dict:
     if unquoted:
         raise BuildError(f"quote these versions in {path}: {', '.join(unquoted)}")
 
+    for index, patch in enumerate(document["upstream"]["patches"]):
+        if missing_keys := PATCH_KEYS - patch.keys():
+            raise BuildError(
+                f"{path}: upstream.patches[{index}] is missing "
+                f"{', '.join(sorted(missing_keys))}"
+            )
+
     return document
 
 
 VARS = load_vars(VARS_FILE)
 SEMAPHORE_REPO = VARS["semaphore"]["repo"]
 SEMAPHORE_REF = VARS["semaphore"]["ref"]
+
+CLONE_DIR = BUILD_DIR / VARS["paths"]["clone_dir"]
+TEMPLATE_DIR = BUILD_DIR / VARS["paths"]["template_dir"]
+RUNTIME_TEMPLATE = VARS["paths"]["runtime_template"]
+DOCKERFILE_REL = VARS["paths"]["dockerfile"]
+
+UPSTREAM_RUNTIME_FROM = VARS["upstream"]["runtime_from"]
 
 # Package lists come from deps/; everything else from vars.yaml.
 CONFIG = {**VARS["image"], **deps.load()}
@@ -78,39 +90,8 @@ class Patch:
     replace: str
 
 
-# Upstream's build stage is patched, not replaced, so their go/npm/IaC steps
-# stay byte-identical and version bumps stay cheap.
-PATCHES = [
-    Patch(
-        "builder FROM",
-        "FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.24 as builder",
-        """ARG UBI_VERSION={{ ubi_version }}
-
-FROM registry.access.redhat.com/ubi9/go-toolset:${UBI_VERSION} AS builder
-
-USER 0
-
-# go-toolset defaults GOPATH to /opt/app-root; upstream uses /go.
-ENV GOPATH=/go \\
-    GOCACHE=/root/.cache/go-build \\
-    HOME=/root
-ENV PATH="/go/bin:${PATH}\"""",
-    ),
-    Patch(
-        "builder packages",
-        "RUN apk add --no-cache -U \\\n    libc-dev curl nodejs npm git gcc zip unzip tar",
-        """RUN dnf -y module enable "nodejs:{{ nodejs_version }}" && \\
-    dnf -y install --nodocs --setopt=install_weak_deps=0 \\
-        glibc-devel nodejs npm git gcc zip unzip tar wget && \\
-    dnf clean all && rm -rf /var/cache/dnf""",
-    ),
-    # Upstream's installer defaults to ./bin, which is not on PATH here.
-    Patch(
-        "task installer",
-        "RUN curl -sL https://taskfile.dev/install.sh | sh",
-        "RUN curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin",
-    ),
-]
+# Patched, not replaced, so upstream's go/npm/IaC steps stay byte-identical.
+PATCHES = [Patch(**patch) for patch in VARS["upstream"]["patches"]]
 
 
 def step(message: str) -> None:
