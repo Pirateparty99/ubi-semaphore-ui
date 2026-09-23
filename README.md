@@ -19,10 +19,14 @@ hunks) and everything else we own lives in our own file. Upstream's
 `go mod download`, `task deps`/`task build` and the tofu/terraform/terragrunt
 fetches are left byte-identical.
 
-Versions, the runtime package list, pip packages and the artifacts copied
-from the build stage are declared in `CONFIG` at the top of
-`build/build_image.py`. Only the runtime stage is a Jinja2 template; the
-build stage stays a patch, so it cannot drift from upstream.
+Configuration lives in `vars.yaml` (versions, the runtime package list, the
+upstream repo and tag); dependency lists live under `build/deps/`. Only the
+runtime stage is a Jinja2 template; the build stage stays a patch, so it cannot
+drift from upstream.
+
+Quote every version in `vars.yaml`. Unquoted, YAML parses `3.10` as the float
+`3.1`, which would render as `python3.1`; the loader rejects non-string
+versions rather than let that reach a build.
 
 The template is appended, not prepended, because **the last stage in a
 Dockerfile is the one that gets built**. Prepending it would produce a valid
@@ -191,13 +195,13 @@ reason it is in the image.
 
 ## Updating to a new upstream release
 
-Bump `SEMAPHORE_REF` in `build/build_image.py` and re-run it. If upstream
+Bump `semaphore.ref` in `vars.yaml` and re-run the build script. If upstream
 changed a patched block the script stops and names it. Worth re-checking on a
 bump:
 
 - the Go version in `go.mod` against the `go-toolset` tag
 - whether upstream's package list gained anything without a UBI equivalent
-- `ANSIBLE_VERSION`, which also forms the venv path
+- `image.ansible_version`, which also forms the venv path
 
 ## Known warnings
 

@@ -1,0 +1,39 @@
+# Build configuration. Package lists live in build/deps/.
+#
+# Quote every version. Unquoted, YAML reads 3.10 as the float 3.1, which would
+# render as python3.1; build_image.py rejects non-string versions for this
+# reason.
+
+# Rendered into the Dockerfile.
+image:
+  ubi_version: "9.8"
+  python_version: "3.12"
+  nodejs_version: "22"
+  # ansible-core's version: it names the venv path, and core is what the deps
+  # stage installs.
+  ansible_version: "2.20.9"
+  tini_version: "v0.19.0"
+
+  runtime_packages:
+    - bash
+    - git
+    - gnupg2
+    - mysql
+    - openssh-clients
+    - rsync
+    - sshpass
+    - tar
+    - tzdata
+    - unzip
+    - wget
+    - zip
+    - jq
+    - shadow-utils
+    - findutils
+    - glibc-langpack-en
+
+# Upstream source. The tag is also the image version; upstream's Taskfile runs
+# `git describe`.
+semaphore:
+  repo: "https://github.com/semaphoreui/semaphore.git"
+  ref: "v2.19.14"

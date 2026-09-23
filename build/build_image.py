@@ -18,23 +18,57 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 BUILD_DIR = Path(__file__).resolve().parent
 CLONE_DIR = BUILD_DIR / "semaphore"
 TEMPLATE_DIR = BUILD_DIR / "templates"
+VARS_FILE = BUILD_DIR.parent / "vars.yaml"
 RUNTIME_TEMPLATE = "Dockerfile.ubi-minimal.j2"
 DOCKERFILE_REL = "deployment/docker/server/Dockerfile"
 
-# The tag is also the image version; upstream's Taskfile runs `git describe`.
-SEMAPHORE_REPO = "https://github.com/semaphoreui/semaphore.git"
-SEMAPHORE_REF = "v2.19.14"
-
-# ansible_version is ansible-core's: it names the venv path, and core is what
-# the deps stage installs. Package lists come from deps/.
-with open(vars.yaml, r) as var_file:
-    CONFIG = { yaml.safe_load(var_file) **deps.load() }
+REQUIRED_VARS = {
+    "image": ["ubi_version", "python_version", "nodejs_version",
+              "ansible_version", "tini_version", "runtime_packages"],
+    "semaphore": ["repo", "ref"],
+}
+VERSION_KEYS = [key for key in REQUIRED_VARS["image"] if key.endswith("_version")]
 
 UPSTREAM_RUNTIME_FROM = "FROM alpine:3.21"
 
 
 class BuildError(Exception):
     """Raised when upstream no longer matches what a patch expects."""
+
+
+def load_vars(path: Path) -> dict:
+    if not path.is_file():
+        raise BuildError(f"{path} not found")
+
+    document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    missing = [
+        f"{section}.{key}"
+        for section, keys in REQUIRED_VARS.items()
+        for key in keys
+        if key not in (document.get(section) or {})
+    ]
+    if missing:
+        raise BuildError(f"{path} is missing: {', '.join(missing)}")
+
+    # Unquoted 3.10 parses as the float 3.1 and would render as python3.1.
+    unquoted = [
+        f"{key}: {document['image'][key]!r}"
+        for key in VERSION_KEYS
+        if not isinstance(document["image"][key], str)
+    ]
+    if unquoted:
+        raise BuildError(f"quote these versions in {path}: {', '.join(unquoted)}")
+
+    return document
+
+
+VARS = load_vars(VARS_FILE)
+SEMAPHORE_REPO = VARS["semaphore"]["repo"]
+SEMAPHORE_REF = VARS["semaphore"]["ref"]
+
+# Package lists come from deps/; everything else from vars.yaml.
+CONFIG = {**VARS["image"], **deps.load()}
 
 
 @dataclass(frozen=True)
