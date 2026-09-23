@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
 import deps
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
@@ -26,19 +27,8 @@ SEMAPHORE_REF = "v2.19.14"
 
 # ansible_version is ansible-core's: it names the venv path, and core is what
 # the deps stage installs. Package lists come from deps/.
-CONFIG = {
-    "ubi_version": "9.8",
-    "python_version": "3.12",
-    "nodejs_version": "22",
-    "ansible_version": "2.20.9",
-    "tini_version": "v0.19.0",
-    "runtime_packages": [
-        "bash", "git", "gnupg2", "mysql", "openssh-clients", "rsync",
-        "sshpass", "tar", "tzdata", "unzip", "wget", "zip", "jq",
-        "shadow-utils", "findutils", "glibc-langpack-en",
-    ],
-    **deps.load(),
-}
+with open(vars.yaml, r) as var_file:
+    CONFIG = { yaml.safe_load(var_file) **deps.load() }
 
 UPSTREAM_RUNTIME_FROM = "FROM alpine:3.21"
 
