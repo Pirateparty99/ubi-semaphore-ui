@@ -66,7 +66,7 @@ def create_venv(uv: str, dependencies: list[str]) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--no-host-uv", action="store_true",
+    parser.add_argument("--force-uv-install", action="store_true",
                         help="install uv into .tools even if the host has one")
     args = parser.parse_args()
 
