@@ -10,7 +10,7 @@ at a pinned tag and rewrites its server Dockerfile:
 1. **Patch the build stage onto UBI** — swap the base image, translate `apk` to
    `dnf`, point the `task` installer somewhere on `PATH`.
 2. **Delete upstream's Alpine runtime stage.**
-3. **Render and append `build/templates/Dockerfile.ubi-minimal.j2`**, which
+3. **Render and append `templates/Dockerfile.ubi-minimal.j2`**, which
    supplies a `deps` stage and the final runtime stage.
 
 The split is deliberate: upstream's build stage is the half that changes
@@ -28,7 +28,7 @@ fetches are left byte-identical.
 | `paths` | clone directory, template directory and names, relative to `build/` |
 | `upstream` | the `find`/`replace` patch rules and the runtime `FROM` anchor |
 
-Only `build/deps/` sits outside it, holding the dependency lists. Nothing else
+Only `deps/` sits outside it, holding the dependency lists. Nothing else
 in `build_image.py` is tunable — the script derives its own location and reads
 everything else from `vars.yaml`.
 
@@ -75,7 +75,7 @@ emitting a half-translated Dockerfile.
 
 ## Dependencies
 
-Declared under `build/deps/`, one subdirectory per kind, each pairing a
+Declared under `deps/`, one subdirectory per kind, each pairing a
 requirements file with the loader that reads it:
 
 | Directory | Declares | Read by |

@@ -12,12 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-import deps
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 # Everything configurable lives in vars.yaml; only the path to it is fixed.
 BUILD_DIR = Path(__file__).resolve().parent
-VARS_FILE = BUILD_DIR.parent / "vars.yaml"
+ROOT = BUILD_DIR.parent
+VARS_FILE = ROOT / "vars.yaml"
+
+# deps/ lives at the repo root, not beside this script.
+sys.path.insert(0, str(ROOT))
+import deps  # noqa: E402
 
 REQUIRED_VARS = {
     "image": ["ubi_version", "python_version", "nodejs_version",
@@ -72,8 +76,8 @@ VARS = load_vars(VARS_FILE)
 SEMAPHORE_REPO = VARS["semaphore"]["repo"]
 SEMAPHORE_REF = VARS["semaphore"]["ref"]
 
-CLONE_DIR = BUILD_DIR / VARS["paths"]["clone_dir"]
-TEMPLATE_DIR = BUILD_DIR / VARS["paths"]["template_dir"]
+CLONE_DIR = ROOT / VARS["paths"]["clone_dir"]
+TEMPLATE_DIR = ROOT / VARS["paths"]["template_dir"]
 RUNTIME_TEMPLATE = VARS["paths"]["runtime_template"]
 DOCKERFILE_REL = VARS["paths"]["dockerfile"]
 

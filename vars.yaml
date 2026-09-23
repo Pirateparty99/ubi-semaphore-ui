@@ -1,4 +1,4 @@
-# Build configuration. Package lists live in build/deps/.
+# Build configuration. Package lists live in deps/.
 #
 # Quote every version. Unquoted, YAML reads 3.10 as the float 3.1, which would
 # render as python3.1; build_image.py rejects non-string versions for this
@@ -38,9 +38,10 @@ semaphore:
   repo: "https://github.com/semaphoreui/semaphore.git"
   ref: "v2.19.14"
 
-# Relative to build/. The clone directory is recreated by the script.
+# Relative to the repo root, except `dockerfile`, which is upstream's own path
+# inside the clone. The clone directory is recreated by the script.
 paths:
-  clone_dir: semaphore
+  clone_dir: build/semaphore
   template_dir: templates
   runtime_template: Dockerfile.ubi-minimal.j2
   dockerfile: deployment/docker/server/Dockerfile
