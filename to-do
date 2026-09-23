@@ -1,6 +1,0 @@
-1. Migrate to using Python instead of Bash
-2. Migrate Dockerfile template to Jinja2 template
-3. Add bootstrap.py script to create a Python UV VENV for the project
-4. Add directory for functions/scripts to load dependencies (subdirs for Ansible Galaxy, Terraform, and Pip dependency loading scripts?)
-5. Add build stage for dependencies
-6. Remove unnecessary files/dirs from the gitignore (I don't like unecessarily long scripts and such. Github's default Python gitignore includes a lot of files/dirs that aren't relevant here  )

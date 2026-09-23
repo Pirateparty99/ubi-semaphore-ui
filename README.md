@@ -57,7 +57,7 @@ stacks edits.
 `bootstrap.py` runs in two phases: it installs the build tooling (uv) and
 then uses uv to create `.venv` with the build dependencies. uv lands in
 `.tools/` rather than `.venv/`, since it is what *creates* the venv. A host
-uv is reused when present; `--no-host-uv` forces the isolated copy.
+uv is reused when present; `--force-uv-install` forces the isolated copy.
 
 Both directories are disposable — deleting them and re-running is the
 supported reset. A system `pip install uv` is not used because this host, like most Debian/Ubuntu ones, is PEP 668 externally-managed.

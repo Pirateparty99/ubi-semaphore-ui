@@ -1,6 +1,6 @@
 """Dependency loaders: each subpackage declares one kind of dependency."""
 
-from ..build.deps import galaxy, pip, terraform
+from . import galaxy, pip, terraform
 
 # Copied from the build stage regardless of which IaC tools are enabled.
 SEMAPHORE_ARTIFACTS = [

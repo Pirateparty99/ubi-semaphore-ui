@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / ".tools"
 VENV = ROOT / ".venv"
 PYPROJECT = ROOT / "pyproject.toml"
+BUILD_SCRIPT = ROOT / "build" / "build_image.py"
 
 
 def bin_dir(root: Path) -> Path:
@@ -78,14 +79,21 @@ def main() -> int:
     dependencies = config["project"].get("dependencies", [])
 
     try:
-        uv = install_tools(config, reuse_host=not args.no_host_uv)
+        uv = install_tools(config, reuse_host=not args.force_uv_install)
         python = create_venv(uv, dependencies)
     except subprocess.CalledProcessError as error:
         print(f"\nerror: command failed: {' '.join(error.cmd)}", file=sys.stderr)
         return 1
 
     print(f"venv:  {VENV} ({', '.join(dependencies) or 'no dependencies'})")
-    print(f"\nBuild with:\n    {python.relative_to(Path.cwd())} build/build_image.py")
+
+    # relative_to raises when cwd is outside the repo, so fall back to absolute.
+    try:
+        cwd = Path.cwd()
+        shown = f"{python.relative_to(cwd)} {BUILD_SCRIPT.relative_to(cwd)}"
+    except ValueError:
+        shown = f"{python} {BUILD_SCRIPT}"
+    print(f"\nBuild with:\n    {shown}")
     return 0
 
 
